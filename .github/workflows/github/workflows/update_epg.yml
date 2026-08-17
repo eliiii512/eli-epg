@@ -1,0 +1,30 @@
+name: Update HOT EPG
+
+on:
+  schedule:
+    - cron: '0 */3 * * *' # רץ אוטומטית כל 6 שעות
+  workflow_dispatch:      # מאפשר להריץ ידנית מתי שתרצה בלחיצת כפתור
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Run EPG Script
+        run: python update_epg.py
+
+      - name: Commit and push if changed
+        run: |
+          git config --global user.name "EPG Bot"
+          git config --global user.email "bot@github.com"
+          git add tv.xml
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update HOT EPG XML" && git push)

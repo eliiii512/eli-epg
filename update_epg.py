@@ -10,9 +10,12 @@ start_date = today.strftime("%Y/%m/%d 00:00:00")
 end_date = (today + timedelta(days=5)).strftime("%Y/%m/%d 23:59:59")
 
 url = "https://www.hot.net.il/HotCmsApiFront/api/ProgramsSchedual/GetProgramsSchedual"
-payload = f'{{"ProgramsStartDateTime":"{start_date}","ProgramsEndDateTime":"{end_date}}"}'
+payload = json.dumps({
+    "ProgramsStartDateTime": start_date,
+    "ProgramsEndDateTime": end_date
+})
 
-# שימוש במחלקה שמטפלת בהפניות אוטומטית במידת הצורך
+# שימוש במחלקה שמטפלת בהפניות אוטומטית
 class RedirectHandler(urllib.request.HTTPRedirectHandler):
     def http_error_302(self, req, fp, code, msg, headers):
         return urllib.request.HTTPRedirectHandler.http_error_302(self, req, fp, code, msg, headers)

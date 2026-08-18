@@ -2,8 +2,8 @@ name: Run HOT EPG
 
 on:
   schedule:
-    - cron: '0 6 * * *' # רץ כל יום בשעה 06:00
-  workflow_dispatch: # מאפשר הרצה ידנית מתוך GitHub
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,7 +22,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests cloudscraper
+          pip install playwright
+          playwright install chromium
+          playwright install-deps
 
       - name: Run update_epg.py
         run: python update_epg.py
@@ -34,7 +36,4 @@ jobs:
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
             git add epg.xml
             git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update EPG data [skip ci]" && git push)
-          else
-            echo "Error: epg.xml was not created"
-            exit 1
           fi

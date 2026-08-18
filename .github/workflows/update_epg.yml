@@ -32,37 +32,39 @@ jobs:
           IPV_USER: ${{ secrets.IPV_USER }}
           IPV_PASS: ${{ secrets.IPV_PASS }}
         run: |
-          # 1. יצירת קובץ האימות
+          # 1. יצירת קובץ האימות מתוך ה-Secrets
           echo "$IPV_USER" > auth.txt
           echo "$IPV_PASS" >> auth.txt
 
-          # 2. הורדת קבצי הקונפיגורציה עם User-Agent של דפדפן
-          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          
-          curl -sSL -A "$UA" "https://configs.ipvanish.com/configs/configs.zip" -o configs.zip || \
-          curl -sSL -A "$UA" "https://www.ipvanish.com/software/configs/configs.zip" -o configs.zip
+          # 2. הורדת תעודת האבטחה הקטנה של IPVanish (ca.crt)
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          curl -sSL -A "$UA" "https://configs.ipvanish.com/configs/ca.ipvanish.com.crt" -o ca.ipvanish.com.crt
 
-          # 3. חילוץ הקבצים
-          unzip -q configs.zip
+          # 3. יצירת קובץ הקונפיגורציה הישראלי ישירות בסקריפט
+          cat << 'EOF' > israel.ovpn
+          client
+          dev tun
+          proto udp
+          remote tlv-c23.ipvanish.com 443
+          remote tlv-c01.ipvanish.com 443
+          resolv-retry infinite
+          nobind
+          persist-key
+          persist-tun
+          ca ca.ipvanish.com.crt
+          auth-user-pass auth.txt
+          verb 3
+          EOF
 
-          # 4. איתור קובץ התצורה הישראלי (תל אביב / IL)
-          CONFIG_FILE=$(ls ipvanish-IL*.ovpn *tlv*.ovpn 2>/dev/null | head -n 1)
+          echo "מפעיל את OpenVPN מול שרת תל אביב..."
 
-          if [ -z "$CONFIG_FILE" ]; then
-            echo "שגיאה: לא נמצא קובץ קונפיגורציה ישראלי"
-            ls -la *.ovpn | head -n 10
-            exit 1
-          fi
+          # 4. הפעלת OpenVPN ברקע
+          sudo openvpn --config israel.ovpn --daemon
 
-          echo "Connecting using config: $CONFIG_FILE"
-
-          # 5. הפעלת OpenVPN ברקע
-          sudo openvpn --config "$CONFIG_FILE" --auth-user-pass auth.txt --daemon
-
-          # 6. המתנה להתייצבות חיבור ה-VPN
+          # 5. המתנה להתייצבות החיבור
           sleep 12
 
-          # 7. בדיקת מיקום ה-IP החדש
+          # 6. בדיקת מיקום ה-IP החדש
           curl -s https://ipinfo.io/json
 
       - name: Run update_epg.py

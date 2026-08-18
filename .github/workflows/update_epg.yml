@@ -25,6 +25,33 @@ jobs:
           pip install playwright
           playwright install chromium
           playwright install-deps
+          sudo apt-get update && sudo apt-get install -y openvpn unzip
+
+      - name: Connect to IPVanish Israel VPN
+        env:
+          IPV_USER: ${{ secrets.IPV_USER }}
+          IPV_PASS: ${{ secrets.IPV_PASS }}
+        run: |
+          # יצירת קובץ ה-Auth מתוך ה-Secrets
+          echo "$IPV_USER" > auth.txt
+          echo "$IPV_PASS" >> auth.txt
+
+          # הורדה וחילוץ קבצי הקונפיגורציה של IPVanish
+          curl -sO https://configs.ipvanish.com/configs/configs.zip
+          unzip -q configs.zip
+
+          # מציאת קובץ השרת הישראלי
+          CONFIG_FILE=$(ls ipvanish-IL*.ovpn 2>/dev/null | head -n 1)
+          echo "Connecting using config: $CONFIG_FILE"
+
+          # הפעלת ה-VPN ברקע
+          sudo openvpn --config "$CONFIG_FILE" --auth-user-pass auth.txt --daemon
+
+          # המתנה להתייצבות החיבור
+          sleep 10
+
+          # בדיקה שה-IP אכן השתנה לישראל
+          curl -s https://ipinfo.io/json
 
       - name: Run update_epg.py
         run: python update_epg.py

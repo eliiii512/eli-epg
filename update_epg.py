@@ -1,6 +1,6 @@
 from datetime import datetime
 import json
-import requests
+import cloudscraper
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
@@ -32,19 +32,23 @@ def fetch_hot_epg():
         'ProgramsEndDateTime': end_date_str,
     }
 
-    # שימוש ב-Session לשמירה על העוגיות והגדרות הבקשה
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Content-Type': 'application/json',
+    # יצירת סקריפר שמחקה דפדפן אמיתי ועוקף הגנות בוטים
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        }
+    )
+
+    headers = {
+        'Host': 'www.hot.net.il',
         'Origin': 'https://www.hot.net.il',
         'Referer': 'https://www.hot.net.il/heb/tv/tvguide/',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-    })
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
+    }
 
     tv = ET.Element('tv')
     target_channels = ['127', '215', '151']
@@ -57,18 +61,8 @@ def fetch_hot_epg():
     print(f'מתחיל הורדת לוח שידורים לטווח: {start_date_str} עד {end_date_str}')
 
     try:
-        # טעינה ראשונית של דף הבית לקבלת עוגיות (Session Cookies)
-        session.get('https://www.hot.net.il/heb/tv/tvguide/', timeout=15)
-
-        # ביצוע בקשת ה-POST ללא מעקב אוטומטי אחר הפניות אינסופיות
-        response = session.post(url, json=payload, timeout=30, allow_redirects=False)
+        response = scraper.post(url, json=payload, headers=headers, timeout=30)
         print(f'סטטוס תגובה מהשרת: {response.status_code}')
-
-        # אם התקבלה הפנייה (301/302), נדפיס לאן השרת מנסה להפנות
-        if response.status_code in (301, 302, 307, 308):
-            print(f"השרת החזיר הפנייה לכתובת: {response.headers.get('Location')}")
-            # ניסיון פנייה ישיר לכתובת ההפנייה במידת הצורך
-            response = session.post(response.headers.get('Location'), json=payload, timeout=30)
 
         if response.status_code == 200:
             res_json = response.json()

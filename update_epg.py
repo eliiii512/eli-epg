@@ -1,5 +1,4 @@
 from datetime import datetime
-import json
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 from playwright.sync_api import sync_playwright
@@ -43,17 +42,18 @@ def fetch_hot_epg():
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-
-            page.goto('https://www.hot.net.il/heb/tv/tvguide/', wait_until='domcontentloaded', timeout=60000)
-
-            response = page.request.post(
-                url,
-                data=payload,
-                headers={'Content-Type': 'application/json'}
+            # פנייה ישירה ל-API ללא טעינת עמוד הדפדפן
+            request_context = p.request.new_context(
+                extra_http_headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': 'https://www.hot.net.il/heb/tv/tvguide/',
+                    'Origin': 'https://www.hot.net.il',
+                    'Accept': 'application/json, text/plain, */*',
+                    'Content-Type': 'application/json;charset=UTF-8'
+                }
             )
 
+            response = request_context.post(url, data=payload)
             print(f'סטטוס תגובה מהשרת: {response.status}')
 
             if response.status == 200:
@@ -89,8 +89,10 @@ def fetch_hot_epg():
                                     desc_elem.text = desc
 
                     print(f'נמצאו תוכניות לערוץ {channel_id}: {match_count}')
+            else:
+                print(f'שגיאה מהשרת ({response.status}): {response.text()[:200]}')
 
-            browser.close()
+            request_context.dispose()
 
     except Exception as e:
         print(f'שגיאה במהלך ההורדה: {e}')

@@ -31,17 +31,21 @@ def fetch_hot_epg():
         'ProgramsStartDateTime': start_date_str,
         'ProgramsEndDateTime': end_date_str,
     }
-    headers = {
-        'Host': 'www.hot.net.il',
-        'Origin': 'https://www.hot.net.il',
-        'Referer': 'https://www.hot.net.il/heb/tv/tvguide/',
-        'Content-Type': 'application/json',
+
+    # שימוש ב-Session לשמירה על העוגיות והגדרות הבקשה
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
-    }
+        'Content-Type': 'application/json',
+        'Origin': 'https://www.hot.net.il',
+        'Referer': 'https://www.hot.net.il/heb/tv/tvguide/',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+    })
 
-    # הכנת שלד ה-XML מראש
     tv = ET.Element('tv')
     target_channels = ['127', '215', '151']
 
@@ -53,8 +57,18 @@ def fetch_hot_epg():
     print(f'מתחיל הורדת לוח שידורים לטווח: {start_date_str} עד {end_date_str}')
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        # טעינה ראשונית של דף הבית לקבלת עוגיות (Session Cookies)
+        session.get('https://www.hot.net.il/heb/tv/tvguide/', timeout=15)
+
+        # ביצוע בקשת ה-POST ללא מעקב אוטומטי אחר הפניות אינסופיות
+        response = session.post(url, json=payload, timeout=30, allow_redirects=False)
         print(f'סטטוס תגובה מהשרת: {response.status_code}')
+
+        # אם התקבלה הפנייה (301/302), נדפיס לאן השרת מנסה להפנות
+        if response.status_code in (301, 302, 307, 308):
+            print(f"השרת החזיר הפנייה לכתובת: {response.headers.get('Location')}")
+            # ניסיון פנייה ישיר לכתובת ההפנייה במידת הצורך
+            response = session.post(response.headers.get('Location'), json=payload, timeout=30)
 
         if response.status_code == 200:
             res_json = response.json()
@@ -103,7 +117,6 @@ def fetch_hot_epg():
     except Exception as e:
         print(f'שגיאה במהלך הדרישה מהשרת: {e}')
 
-    # כתיבת הקובץ מתבצעת תמיד, גם אם לא התקבלו נתונים
     tree = ET.ElementTree(tv)
     ET.indent(tree, space="\t", level=0)
     tree.write("epg.xml", encoding="utf-8", xml_declaration=True)

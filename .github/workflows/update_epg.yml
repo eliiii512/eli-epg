@@ -32,25 +32,32 @@ jobs:
           IPV_USER: ${{ secrets.IPV_USER }}
           IPV_PASS: ${{ secrets.IPV_PASS }}
         run: |
-          # יצירת קובץ ה-Auth מתוך ה-Secrets
+          # 1. יצירת קובץ האימות
           echo "$IPV_USER" > auth.txt
           echo "$IPV_PASS" >> auth.txt
 
-          # הורדה וחילוץ קבצי הקונפיגורציה של IPVanish
-          curl -sO https://configs.ipvanish.com/configs/configs.zip
+          # 2. הורדת קבצי הקונפיגורציה תוך מעקב אחר הפניות (-fL)
+          curl -sfL "https://configs.ipvanish.com/configs/configs.zip" -o configs.zip || \
+          curl -sfL "https://www.ipvanish.com/software/configs/configs.zip" -o configs.zip
+
+          # 3. חילוץ הקבצים
           unzip -q configs.zip
 
-          # מציאת קובץ השרת הישראלי
+          # 4. איתור קובץ התצורה הישראלי
           CONFIG_FILE=$(ls ipvanish-IL*.ovpn 2>/dev/null | head -n 1)
+          if [ -z "$CONFIG_FILE" ]; then
+            CONFIG_FILE=$(ls *tlv*.ovpn 2>/dev/null | head -n 1)
+          fi
+
           echo "Connecting using config: $CONFIG_FILE"
 
-          # הפעלת ה-VPN ברקע
+          # 5. הפעלת OpenVPN ברקע
           sudo openvpn --config "$CONFIG_FILE" --auth-user-pass auth.txt --daemon
 
-          # המתנה להתייצבות החיבור
-          sleep 10
+          # 6. המתנה להתייצבות חיבור ה-VPN
+          sleep 12
 
-          # בדיקה שה-IP אכן השתנה לישראל
+          # 7. בדיקת מיקום ה-IP החדש
           curl -s https://ipinfo.io/json
 
       - name: Run update_epg.py

@@ -1,8 +1,8 @@
 from datetime import datetime
 import json
-import cloudscraper
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
+from playwright.sync_api import sync_playwright
 
 def format_hot_time(time_str: str) -> str:
     try:
@@ -13,7 +13,6 @@ def format_hot_time(time_str: str) -> str:
         dt_utc = dt_israel.astimezone(ZoneInfo('UTC'))
         return dt_utc.strftime('%Y%m%d%H%M%S +0000')
     except Exception as e:
-        print(f"שגיאת המרת זמן עבור '{time_str}': {e}")
         return ''.join(filter(str.isdigit, time_str))[:14] + ' +0000'
 
 def fetch_hot_epg():
@@ -32,24 +31,6 @@ def fetch_hot_epg():
         'ProgramsEndDateTime': end_date_str,
     }
 
-    # יצירת סקריפר שמחקה דפדפן אמיתי ועוקף הגנות בוטים
-    scraper = cloudscraper.create_scraper(
-        browser={
-            'browser': 'chrome',
-            'platform': 'windows',
-            'desktop': True
-        }
-    )
-
-    headers = {
-        'Host': 'www.hot.net.il',
-        'Origin': 'https://www.hot.net.il',
-        'Referer': 'https://www.hot.net.il/heb/tv/tvguide/',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-    }
-
     tv = ET.Element('tv')
     target_channels = ['127', '215', '151']
 
@@ -61,55 +42,61 @@ def fetch_hot_epg():
     print(f'מתחיל הורדת לוח שידורים לטווח: {start_date_str} עד {end_date_str}')
 
     try:
-        response = scraper.post(url, json=payload, headers=headers, timeout=30)
-        print(f'סטטוס תגובה מהשרת: {response.status_code}')
+        with sync_playwright() as p:
+            # הפעלת דפדפן כרום אמיתי ברקע
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
 
-        if response.status_code == 200:
-            res_json = response.json()
-            if isinstance(res_json, dict) and 'data' in res_json and res_json['data'] and 'programsDetails' in res_json['data']:
-                programs_list = res_json['data']['programsDetails']
-            elif isinstance(res_json, list):
-                programs_list = res_json
-            else:
-                programs_list = []
+            # מעבר ראשוני לדף הראשי לעקוף אתגרי אבטחה
+            page.goto('https://www.hot.net.il/heb/tv/tvguide/', wait_until='domcontentloaded', timeout=60000)
 
-            print(f'סך הכל פריטים שהתקבלו מהשרת: {len(programs_list)}')
+            # ביצוע בקשת ה-API מתוך קונטקסט הדפדפן
+            response = page.request.post(
+                url,
+                data=payload,
+                headers={'Content-Type': 'application/json'}
+            )
 
-            for channel_id in target_channels:
-                match_count = 0
-                for item in programs_list:
-                    if str(item.get('channelID', '')) == channel_id:
-                        title = item.get('programTitle', '').strip()
-                        raw_desc = item.get('synopsis', '').strip()
-                        desc = (raw_desc[:80].strip() + '...') if len(raw_desc) > 80 else raw_desc.strip()
+            print(f'סטטוס תגובה: {response.status}')
 
-                        raw_start = item.get('programStartTime', '')
-                        raw_end = item.get('programEndTime', '')
+            if response.status == 200:
+                res_json = response.json()
+                programs_list = res_json.get('data', {}).get('programsDetails', []) if isinstance(res_json, dict) else res_json
 
-                        start_time = format_hot_time(raw_start)
-                        end_time = format_hot_time(raw_end)
+                print(f'סך הכל פריטים שהתקבלו: {len(programs_list)}')
 
-                        if channel_id in ['127', '215']:
-                            episode = str(item.get('programEpisode', '')).strip()
-                            full_title = f'{title} - פרק {episode}' if episode and episode != '0' else title
-                        else:
-                            full_title = title
+                for channel_id in target_channels:
+                    match_count = 0
+                    for item in programs_list:
+                        if str(item.get('channelID', '')) == channel_id:
+                            title = item.get('programTitle', '').strip()
+                            raw_desc = item.get('synopsis', '').strip()
+                            desc = (raw_desc[:80].strip() + '...') if len(raw_desc) > 80 else raw_desc.strip()
 
-                        if full_title and start_time and end_time:
-                            match_count += 1
-                            prog_elem = ET.SubElement(tv, 'programme', start=start_time, stop=end_time, channel=channel_id)
-                            title_elem = ET.SubElement(prog_elem, 'title', lang="he")
-                            title_elem.text = full_title
-                            if desc:
-                                desc_elem = ET.SubElement(prog_elem, 'desc', lang="he")
-                                desc_elem.text = desc
+                            start_time = format_hot_time(item.get('programStartTime', ''))
+                            end_time = format_hot_time(item.get('programEndTime', ''))
 
-                print(f'נמצאו תוכניות לערוץ {channel_id}: {match_count}')
-        else:
-            print(f'שגיאה מהשרת ({response.status_code}): {response.text[:200]}')
+                            if channel_id in ['127', '215']:
+                                episode = str(item.get('programEpisode', '')).strip()
+                                full_title = f'{title} - פרק {episode}' if episode and episode != '0' else title
+                            else:
+                                full_title = title
+
+                            if full_title and start_time and end_time:
+                                match_count += 1
+                                prog_elem = ET.SubElement(tv, 'programme', start=start_time, stop=end_time, channel=channel_id)
+                                title_elem = ET.SubElement(prog_elem, 'title', lang="he")
+                                title_elem.text = full_title
+                                if desc:
+                                    desc_elem = ET.SubElement(prog_elem, 'desc', lang="he")
+                                    desc_elem.text = desc
+
+                    print(f'נמצאו תוכניות לערוץ {channel_id}: {match_count}')
+
+            browser.close()
 
     except Exception as e:
-        print(f'שגיאה במהלך הדרישה מהשרת: {e}')
+        print(f'שגיאה במהלך ההורדה: {e}')
 
     tree = ET.ElementTree(tv)
     ET.indent(tree, space="\t", level=0)

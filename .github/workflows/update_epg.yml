@@ -36,17 +36,22 @@ jobs:
           echo "$IPV_USER" > auth.txt
           echo "$IPV_PASS" >> auth.txt
 
-          # 2. הורדת קבצי הקונפיגורציה תוך מעקב אחר הפניות (-fL)
-          curl -sfL "https://configs.ipvanish.com/configs/configs.zip" -o configs.zip || \
-          curl -sfL "https://www.ipvanish.com/software/configs/configs.zip" -o configs.zip
+          # 2. הורדת קבצי הקונפיגורציה עם User-Agent של דפדפן
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          
+          curl -sSL -A "$UA" "https://configs.ipvanish.com/configs/configs.zip" -o configs.zip || \
+          curl -sSL -A "$UA" "https://www.ipvanish.com/software/configs/configs.zip" -o configs.zip
 
           # 3. חילוץ הקבצים
           unzip -q configs.zip
 
-          # 4. איתור קובץ התצורה הישראלי
-          CONFIG_FILE=$(ls ipvanish-IL*.ovpn 2>/dev/null | head -n 1)
+          # 4. איתור קובץ התצורה הישראלי (תל אביב / IL)
+          CONFIG_FILE=$(ls ipvanish-IL*.ovpn *tlv*.ovpn 2>/dev/null | head -n 1)
+
           if [ -z "$CONFIG_FILE" ]; then
-            CONFIG_FILE=$(ls *tlv*.ovpn 2>/dev/null | head -n 1)
+            echo "שגיאה: לא נמצא קובץ קונפיגורציה ישראלי"
+            ls -la *.ovpn | head -n 10
+            exit 1
           fi
 
           echo "Connecting using config: $CONFIG_FILE"

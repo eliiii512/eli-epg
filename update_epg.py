@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 from playwright.sync_api import sync_playwright
@@ -42,22 +43,44 @@ def fetch_hot_epg():
 
     try:
         with sync_playwright() as p:
-            # פנייה ישירה ל-API ללא טעינת עמוד הדפדפן
-            request_context = p.request.new_context(
-                extra_http_headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Referer': 'https://www.hot.net.il/heb/tv/tvguide/',
-                    'Origin': 'https://www.hot.net.il',
-                    'Accept': 'application/json, text/plain, */*',
-                    'Content-Type': 'application/json;charset=UTF-8'
-                }
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
+            page = context.new_page()
 
-            response = request_context.post(url, data=payload)
-            print(f'סטטוס תגובה מהשרת: {response.status}')
+            # 1. טעינת דף הבית לקבלת עוגיות ה-WAF
+            print("טוען את דף הבית של HOT לקבלת עוגיות אבטחה...")
+            page.goto('https://www.hot.net.il/', wait_until='domcontentloaded', timeout=60000)
+            page.wait_for_timeout(3000)
 
-            if response.status == 200:
-                res_json = response.json()
+            # 2. ביצוע ה-Fetch מתוך ה-DOM של הדפדפן עצמו
+            print("שולח בקשה ל-API מתוך קונטקסט הדפדפן...")
+            response_data = page.evaluate("""
+                async ({ url, payload }) => {
+                    try {
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json;charset=UTF-8',
+                                'Accept': 'application/json, text/plain, */*'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        if (!res.ok) return { status: res.status, data: null };
+                        const json = await res.json();
+                        return { status: res.status, data: json };
+                    } catch (err) {
+                        return { status: 500, error: err.toString() };
+                    }
+                }
+            """, {'url': url, 'payload': payload})
+
+            status = response_data.get('status')
+            print(f'סטטוס תגובה מהשרת: {status}')
+
+            if status == 200 and response_data.get('data'):
+                res_json = response_data['data']
                 programs_list = res_json.get('data', {}).get('programsDetails', []) if isinstance(res_json, dict) else res_json
 
                 print(f'סך הכל פריטים שהתקבלו: {len(programs_list)}')
@@ -90,9 +113,9 @@ def fetch_hot_epg():
 
                     print(f'נמצאו תוכניות לערוץ {channel_id}: {match_count}')
             else:
-                print(f'שגיאה מהשרת ({response.status}): {response.text()[:200]}')
+                print(f'שגיאה בבקשה: {response_data}')
 
-            request_context.dispose()
+            browser.close()
 
     except Exception as e:
         print(f'שגיאה במהלך ההורדה: {e}')

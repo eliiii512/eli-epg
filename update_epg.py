@@ -43,21 +43,18 @@ def fetch_hot_epg():
 
     try:
         with sync_playwright() as p:
-            # הפעלת דפדפן כרום אמיתי ברקע
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
 
-            # מעבר ראשוני לדף הראשי לעקוף אתגרי אבטחה
             page.goto('https://www.hot.net.il/heb/tv/tvguide/', wait_until='domcontentloaded', timeout=60000)
 
-            # ביצוע בקשת ה-API מתוך קונטקסט הדפדפן
             response = page.request.post(
                 url,
                 data=payload,
                 headers={'Content-Type': 'application/json'}
             )
 
-            print(f'סטטוס תגובה: {response.status}')
+            print(f'סטטוס תגובה מהשרת: {response.status}')
 
             if response.status == 200:
                 res_json = response.json()

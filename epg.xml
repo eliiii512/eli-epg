@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tv>
+	<channel id="127">
+		<display-name>Channel 127</display-name>
+	</channel>
+	<channel id="215">
+		<display-name>Channel 215</display-name>
+	</channel>
+	<channel id="151">
+		<display-name>Channel 151</display-name>
+	</channel>
+</tv>
